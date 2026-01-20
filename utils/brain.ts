@@ -1,22 +1,25 @@
 import { faqData } from "./data";
 
-// 1. Text Preprocessing (Tokenization & Cleaning)
-// Requirement: "Preprocess the text... tokenize, clean"
+// 1. STOPWORDS (Noise words to ignore)
+const STOPWORDS = new Set([
+  "the", "is", "at", "which", "on", "a", "an", "and", "or", "but", "if", "of", "to", "in", "for", "with", "my", "i", "how", "do", "does", "can", "what", "where", "why", "please", "help", "me"
+]);
+
+// 2. Advanced Preprocessing
 function preprocess(text: string): string[] {
   return text
     .toLowerCase()
-    .replace(/[^\w\s]/g, "") // Remove punctuation
-    .split(/\s+/) // Tokenize by whitespace
-    .filter((word) => word.length > 2); // Remove short noise words (like "is", "a")
+    .replace(/[^\w\s]/g, "") // Remove special chars
+    .split(/\s+/) // Split into words
+    .filter(word => word.length > 2 && !STOPWORDS.has(word)); // Remove noise
 }
 
-// 2. Create a Vector from Text based on a Vocabulary
+// 3. Vectorization
 function textToVector(tokens: string[], vocabulary: string[]): number[] {
   return vocabulary.map((word) => (tokens.includes(word) ? 1 : 0));
 }
 
-// 3. Cosine Similarity Algorithm
-// Requirement: "techniques like cosine similarity"
+// 4. Cosine Similarity Math
 function calculateCosineSimilarity(vecA: number[], vecB: number[]): number {
   const dotProduct = vecA.reduce((acc, val, i) => acc + val * vecB[i], 0);
   const magA = Math.sqrt(vecA.reduce((acc, val) => acc + val * val, 0));
@@ -26,29 +29,26 @@ function calculateCosineSimilarity(vecA: number[], vecB: number[]): number {
   return dotProduct / (magA * magB);
 }
 
-// 4. Main Function to Find Best Answer
+// 5. Smart Matching Engine
 export function findBestMatch(userQuery: string) {
-  // A. Build Vocabulary from all FAQs + User Query
   const allQuestions = faqData.map((f) => f.question);
   const queryTokens = preprocess(userQuery);
   
-  // Combine all words into a unique set (The "Bag of Words")
+  // Build Vocabulary
   const allTokens = new Set<string>();
   queryTokens.forEach(t => allTokens.add(t));
   allQuestions.forEach(q => preprocess(q).forEach(t => allTokens.add(t)));
   const vocabulary = Array.from(allTokens);
 
-  // B. Convert User Query to Vector
   const queryVector = textToVector(queryTokens, vocabulary);
 
-  // C. Compare with every FAQ
   let bestMatchIndex = -1;
   let highestScore = 0;
 
+  // Compare against every FAQ
   faqData.forEach((faq, index) => {
     const faqTokens = preprocess(faq.question);
     const faqVector = textToVector(faqTokens, vocabulary);
-    
     const score = calculateCosineSimilarity(queryVector, faqVector);
 
     if (score > highestScore) {
@@ -57,17 +57,13 @@ export function findBestMatch(userQuery: string) {
     }
   });
 
-  // Threshold: If similarity is too low (e.g., < 0.3), return a fallback
-  if (highestScore < 0.3) {
-    return {
-      answer: "I'm not sure about that. Could you please rephrase or contact support?",
-      score: highestScore
-    };
+  // Thresholds
+  if (highestScore > 0.4) {
+    return { answer: faqData[bestMatchIndex].answer, score: highestScore };
+  } else if (highestScore > 0.2) {
+    // Low confidence fallback
+    return { answer: "I think you're asking about " + faqData[bestMatchIndex].category + ", but I'm not 100% sure. Can you be more specific?", score: highestScore };
+  } else {
+    return { answer: "I'm not sure I understand. Try asking about 'shipping', 'returns', or 'payments'.", score: 0 };
   }
-
-  return {
-    answer: faqData[bestMatchIndex].answer,
-    score: highestScore,
-    matchedQuestion: faqData[bestMatchIndex].question
-  };
 }
